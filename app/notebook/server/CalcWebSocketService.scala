@@ -111,6 +111,10 @@ class CalcWebSocketService(
         Logger.info(s"UN-registering web-socket ($ws) in service ${this} (current count is ${wss.size})")
         wss = wss.filterNot(_ == ws)
 
+      case InterruptCell(cell_id) =>
+        // TODO: interrupt running cell if it's runing
+        // TODO: cancel if queued
+
       case InterruptCalculator =>
         Logger.info(s"Interrupting the computations, current is $currentSessionOperation")
         currentSessionOperation.headOption.foreach { op =>

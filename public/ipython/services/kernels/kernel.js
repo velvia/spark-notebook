@@ -771,6 +771,15 @@ define([
         return this.send_shell_message("interrupt_request", content, callbacks);
     };
 
+    Kernel.prototype.cancelCellJobs = function (cell_id, callback) {
+        var callbacks;
+        if (callback) {
+            callbacks = {shell: {reply: callback}};
+        }
+        var content = { cell_id: cell_id };
+        return this.send_shell_message("interrupt_cell_request", content, callbacks);
+    };
+
     /**
      * @function send_input_reply
      */
