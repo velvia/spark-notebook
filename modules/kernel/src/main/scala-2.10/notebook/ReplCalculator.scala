@@ -6,7 +6,6 @@ import akka.actor.{Actor, ActorRef, Props}
 import notebook.OutputTypes._
 import notebook.PresentationCompiler
 import notebook.kernel._
-import notebook.JobTracking
 import notebook.util.{CustomResolvers, Deps}
 
 import sbt._
@@ -84,7 +83,10 @@ class ReplCalculator(
   }
 
   var repo: File =  customLocalRepo.map { x =>
-                      new File(notebook.util.StringUtils.updateWithVarEnv(x))
+                      import scala.util.matching.Regex
+                      val r = new Regex("""\$\{([_a-zA-Z0-9]+)\}+""", "var")
+                      val f = r.replaceAllIn(x, m => sys.env(m.group("var")))
+                      new File(f)
                     }.getOrElse {
                       val tmp = new File(System.getProperty("java.io.tmpdir"))
 
@@ -200,40 +202,15 @@ class ReplCalculator(
           }
         }
 
-      case er@ExecuteRequest(_, _, code) if queue.nonEmpty =>
+      case er@ExecuteRequest(_, code) if queue.nonEmpty =>
         log.debug("Enqueuing execute request at: " + queue.size)
         queue = queue.enqueue((sender(), er))
 
-      case er@ExecuteRequest(_, _, code) =>
+      case er@ExecuteRequest(_, code) =>
         log.debug("Enqueuing execute request at: " + queue.size)
         queue = queue.enqueue((sender(), er))
         log.debug("Executing execute request")
         execute(sender(), er)
-
-      case InterruptCellRequest(killCellId) =>
-        // kill job(s) still waiting for execution to start, if any
-        val (jobsInQueueToKill, nonAffectedJobs) = queue.partition { case (_, ExecuteRequest(cellIdInQueue, _, _)) =>
-          cellIdInQueue == killCellId
-        }
-        log.debug(s"Canceling $killCellId jobs still in queue (if any):\n $jobsInQueueToKill")
-        queue = nonAffectedJobs
-
-        // call cancelJobGroup even if job was in queue
-        // this is safe in recent spark versions, see SPARK-6414
-        log.debug(s"Interrupting the cell: $killCellId")
-        val jobGroupId = JobTracking.jobGroupId(killCellId)
-        // make sure sparkContext is already available!
-        if (repl.interp.allDefinedNames.filter(_.toString == "sparkContext").nonEmpty) {
-          repl.evaluate(
-            s"""sparkContext.cancelJobGroup("${jobGroupId}")""",
-            msg => sender() ! StreamResponse(msg, "stdout")
-          )
-        }
-
-        // StreamResponse shows error msg
-        sender() ! StreamResponse(s"The cell was cancelled.\n", "stderr")
-        // ErrorResponse to marks cell as ended
-        sender() ! ErrorResponse(s"The cell was cancelled.\n", incomplete = false)
 
       case InterruptRequest =>
         log.debug("Interrupting the spark context")
@@ -387,22 +364,10 @@ class ReplCalculator(
       val result = scala.concurrent.Future {
         // this future is required to allow InterruptRequest messages to be received and process
         // so that spark jobs can be killed and the hand given back to the user to refine their tasks
-        val cellId = er.cellId
-        def replEvaluate(code:String, cellId:String) = {
-          val cellResult = try {
-           repl.evaluate(s"""
-              |sparkContext.setJobGroup("${JobTracking.jobGroupId(cellId)}", "${JobTracking.jobDescription(code)}")
-              |$code
-              """.stripMargin,
-              msg => thisSender ! StreamResponse(msg, "stdout")
-            )
-          }
-          finally {
-             repl.evaluate("sparkContext.clearJobGroup()")
-          }
-          cellResult
-        }
-        val result = replEvaluate(newCode, cellId)
+        val result = repl.evaluate( newCode,
+                                    msg => thisSender ! StreamResponse(msg, "stdout"),
+                                    (xy, z) => thisSender ! DefinitionResponse(xy, z)
+                                  )
         val d = toCoarsest(Duration(System.currentTimeMillis - start, MILLISECONDS))
         (d, result._1)
       }
@@ -500,12 +465,9 @@ class ReplCalculator(
     case msgThatShouldBeFromTheKernel =>
 
       msgThatShouldBeFromTheKernel match {
-        case req @ InterruptCellRequest(_) =>
-          executor.forward(req)
-
         case InterruptRequest => executor.forward(InterruptRequest)
 
-        case req@ExecuteRequest(_, _, code) => executor.forward(req)
+        case req@ExecuteRequest(_, code) => executor.forward(req)
 
         case CompletionRequest(line, cursorPosition) =>
           val (matched, candidates) = presentationCompiler.complete(line, cursorPosition)
