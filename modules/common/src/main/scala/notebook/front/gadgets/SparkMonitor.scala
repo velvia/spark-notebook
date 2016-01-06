@@ -86,7 +86,7 @@ class SparkMonitor(sparkContext:SparkContext, checkInterval:Long = 1000) extends
         stageDataOption.map { stageData =>
           JobInfo(
             jobId = jobsByStageId(s.stageId).jobId,
-            completedTasks = stageData.completedIndices.size,
+            completedTasks = stageData.completedIndices.size + stageData.numFailedTasks,
             totalTasks = s.numTasks,
             submissionTime = s.submissionTime,
             completionTime = s.completionTime
