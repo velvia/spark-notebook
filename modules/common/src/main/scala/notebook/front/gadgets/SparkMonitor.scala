@@ -16,6 +16,7 @@ import notebook.util.Logging
 
 case class JobInfo(jobId: Int,
                    completedTasks: Int,
+                   failedTasks: Int,
                    totalTasks: Int,
                    submissionTime: Option[Long],
                    completionTime: Option[Long])
@@ -86,7 +87,8 @@ class SparkMonitor(sparkContext:SparkContext, checkInterval:Long = 1000) extends
         stageDataOption.map { stageData =>
           JobInfo(
             jobId = jobsByStageId(s.stageId).jobId,
-            completedTasks = stageData.completedIndices.size + stageData.numFailedTasks,
+            completedTasks = stageData.completedIndices.size,
+            failedTasks = stageData.numFailedTasks,
             totalTasks = s.numTasks,
             submissionTime = s.submissionTime,
             completionTime = s.completionTime
@@ -101,6 +103,7 @@ class SparkMonitor(sparkContext:SparkContext, checkInterval:Long = 1000) extends
             JobInfo(
               jobId = j1.jobId,
               completedTasks = j1.completedTasks + j2.completedTasks,
+              failedTasks = j1.failedTasks + j2.failedTasks,
               totalTasks = j1.totalTasks + j2.totalTasks,
               submissionTime = minOption(j1.submissionTime ++ j2.submissionTime),
               completionTime = maxOption(j1.submissionTime ++ j2.submissionTime)
@@ -116,14 +119,17 @@ class SparkMonitor(sparkContext:SparkContext, checkInterval:Long = 1000) extends
           s"${(d.toFloat / 1000).formatted("%.2f")}s"
         }.getOrElse("N/A")
 
+        val completed = Math.min((j.completedTasks.toDouble + j.failedTasks.toDouble) / j.totalTasks * 100, 100)
+
         Json.obj(
           "id" → j.jobId,
           "job" → j.jobId,
           "group" → jobGroup,
           "cell_id" → cellId,
           "name" → jobGroup,
-          "completed" → (j.completedTasks.toDouble / j.totalTasks * 100),
+          "completed" → completed,
           "completed_tasks" -> j.completedTasks,
+          "failed_tasks" → j.failedTasks,
           "total_tasks" -> j.totalTasks,
           "duration_millis" → jobDuration,
           "time" → jobDurationStr

@@ -94,10 +94,12 @@ define([
 
         _.each(perCellId, function(jobs, cell_id){
           var completedTasks = sum(_.pluck(jobs, 'completed_tasks'));
+          var failedTasks = sum(_.pluck(jobs, 'failed_tasks'));
           var totalTasks = sum(_.pluck(jobs, 'total_tasks'));
-          var cellProgress = Math.floor(completedTasks * 100.0 / totalTasks);
+
+          var cellProgress = Math.min(Math.floor((completedTasks + failedTasks) * 100.0 / totalTasks), 100);
           if (cell_id) {
-            var cellProgressBar = $(cells[cell_id]).find('.cell-progress-bar')
+            var cellProgressBar = $(cells[cell_id]).find('.cell-progress-bar');
             cellProgressBar.css("width", Math.max(cellProgress, 5) + "%");
             if (cellProgress == 100) {
               cellProgressBar.addClass("completed")
