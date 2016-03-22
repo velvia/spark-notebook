@@ -110,7 +110,9 @@ object Dependencies {
 
   def sparkCSV: Seq[ModuleID] = {
     import scala.math.Ordering.Implicits._
-    if (sparkVersionTuple >= (1, 3, 0)) {
+    if (sparkVersionTuple >= (1, 6, 0)) {
+      Seq("com.databricks" %% "spark-csv" % "1.4.0")
+    } else if (sparkVersionTuple >= (1, 3, 0)) {
       Seq("com.databricks" %% "spark-csv" % "1.3.0")
     } else Nil
   }
