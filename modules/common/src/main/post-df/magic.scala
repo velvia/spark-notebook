@@ -15,7 +15,7 @@ trait ExtraSamplerImplicits {
     override def samplingStrategy = new LimitBasedSampling()
 
     def apply(df: DataFrame, max: Int): DataFrame = {
-      df.limit(max).cache()
+      df.limit(max)
     }
   }
 }
